@@ -7,13 +7,17 @@
     <application
         android:allowBackup="true"
         android:label="en导航"
+        android:icon="@drawable/app_icon"
+        android:roundIcon="@drawable/app_icon"
         android:theme="@style/Theme.ENNavigation"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
