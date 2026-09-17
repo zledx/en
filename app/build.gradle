@@ -10,8 +10,8 @@ android {
         applicationId 'com.enabcd.navigation'
         minSdk 23
         targetSdk 35
-        versionCode 6
-        versionName '1.5.0'
+        versionCode 7
+        versionName '1.6.0'
     }
 
     buildTypes {
@@ -20,4 +20,8 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
 }
