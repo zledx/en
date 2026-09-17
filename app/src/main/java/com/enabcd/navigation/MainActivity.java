@@ -41,6 +41,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -48,13 +52,11 @@ public class MainActivity extends Activity {
     private static final String HOME_URL = "https://enabcd.cn/";
     private static final String HOT_URL = "https://enabcd.cn/hot.php";
     private static final String MAGIC_URL = "https://enabcd.cn/magic.php";
-    private static final String BOOTSTRAP_URL = "https://enabcd.cn/app-bootstrap";
 
     private static final int PAGE_BG = Color.rgb(247, 248, 251);
     private static final int TEXT = Color.rgb(31, 35, 41);
     private static final int MUTED = Color.rgb(126, 133, 145);
     private static final int ACCENT = Color.rgb(3, 103, 253);
-    private static final int ACCENT_SOFT = Color.rgb(238, 245, 255);
 
     private FrameLayout root;
     private WebView webView;
@@ -62,7 +64,6 @@ public class MainActivity extends Activity {
     private ImageView glassBackdrop;
     private View glassTint;
     private LinearLayout bottomNav;
-    private FrameLayout splashOverlay;
     private ValueCallback<Uri[]> fileCallback;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -73,8 +74,6 @@ public class MainActivity extends Activity {
 
     private boolean showingAbout = false;
     private boolean showingSettings = false;
-    private boolean bootstrapInProgress = false;
-    private boolean firstHomeReady = false;
     private int homeHistoryIndex = -1;
     private float touchDownX;
     private float touchDownY;
@@ -89,14 +88,13 @@ public class MainActivity extends Activity {
         configureSystemBars();
         buildShell();
         configureWebView();
+        installLightOnlyGuard();
         installSwipeNavigation();
-        showSplash();
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
-            webView.setAlpha(0f);
         } else {
-            loadInitialHome();
+            webView.loadUrl(HOME_URL + "?enapp=1");
         }
         setActiveNav("home");
     }
@@ -219,7 +217,6 @@ public class MainActivity extends Activity {
         setActiveNav(key);
         String current = webView.getUrl();
         if (current != null && current.equals(url)) return;
-        webView.setAlpha(1f);
         webView.loadUrl(url);
     }
 
@@ -229,17 +226,16 @@ public class MainActivity extends Activity {
 
         showingAbout = false;
         showingSettings = false;
-        webView.animate().cancel();
-        webView.setAlpha(0f);
-        webView.setBackgroundColor(PAGE_BG);
 
         WebBackForwardList list = webView.copyBackForwardList();
         int currentIndex = list.getCurrentIndex();
         int targetIndex = -1;
+
         if (homeHistoryIndex >= 0 && homeHistoryIndex < list.getSize()) {
             WebHistoryItem item = list.getItemAtIndex(homeHistoryIndex);
             if (item != null && isHomeUrl(item.getUrl())) targetIndex = homeHistoryIndex;
         }
+
         if (targetIndex < 0) {
             for (int i = currentIndex - 1; i >= 0; i--) {
                 WebHistoryItem item = list.getItemAtIndex(i);
@@ -249,11 +245,12 @@ public class MainActivity extends Activity {
                 }
             }
         }
+
         if (targetIndex >= 0) {
             homeHistoryIndex = targetIndex;
             webView.goBackOrForward(targetIndex - currentIndex);
         } else {
-            loadInitialHome();
+            webView.loadUrl(HOME_URL + "?enapp=1");
         }
     }
 
@@ -261,7 +258,6 @@ public class MainActivity extends Activity {
         showingAbout = true;
         showingSettings = false;
         setActiveNav("about");
-        webView.setAlpha(1f);
         webView.loadDataWithBaseURL("https://enabcd.cn/app-about", buildAboutHtml(), "text/html", "UTF-8", null);
         scheduleGlassRefresh();
     }
@@ -270,14 +266,13 @@ public class MainActivity extends Activity {
         showingSettings = true;
         showingAbout = false;
         setActiveNav("settings");
-        webView.setAlpha(1f);
         webView.loadDataWithBaseURL("https://enabcd.cn/app-settings", buildSettingsHtml(), "text/html", "UTF-8", null);
         scheduleGlassRefresh();
     }
 
     private String buildAboutHtml() {
         return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>" +
-                "<style>*{box-sizing:border-box}html,body{margin:0;background:#f7f8fb;color:#1f2329;color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}body{padding:34px 18px 94px}.head{padding:2px 3px 19px}.name{font-size:27px;font-weight:800;letter-spacing:-.02em}.desc{margin-top:6px;font-size:13px;line-height:1.65;color:#7e8591}.card{margin:0 6px 12px;background:#fff;border-radius:15px;overflow:hidden;box-shadow:0 5px 18px rgba(30,45,70,.035)}a{height:56px;padding:0 17px;text-decoration:none;color:#20242b;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;border-bottom:1px solid #edf0f4}a:last-child{border-bottom:0}.arrow{color:#a2a9b3;font-size:20px;font-weight:400}</style></head><body>" +
+                "<style>*{box-sizing:border-box}html,body{margin:0;background:#f7f8fb;color:#1f2329;color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}body{padding:54px 18px 94px}.head{padding:2px 3px 21px}.name{font-size:27px;font-weight:800;letter-spacing:-.02em}.desc{margin-top:6px;font-size:13px;line-height:1.65;color:#7e8591}.card{margin:0 6px 12px;background:#fff;border-radius:15px;overflow:hidden;box-shadow:0 5px 18px rgba(30,45,70,.035)}a{height:56px;padding:0 17px;text-decoration:none;color:#20242b;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;border-bottom:1px solid #edf0f4}a:last-child{border-bottom:0}.arrow{color:#a2a9b3;font-size:20px;font-weight:400}</style></head><body>" +
                 "<div class='head'><div class='name'>en导航</div><div class='desc'>优质资源极简主义导航</div></div>" +
                 "<div class='card'><a href='https://enabcd.cn/privacy.php'><span>隐私政策</span><span class='arrow'>›</span></a>" +
                 "<a href='https://enabcd.cn/disclaimer.php'><span>免责声明</span><span class='arrow'>›</span></a>" +
@@ -288,7 +283,7 @@ public class MainActivity extends Activity {
         boolean announcement = prefs.getBoolean("show_announcement", true);
         boolean randomVideo = prefs.getBoolean("show_random_video", true);
         return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>" +
-                "<style>*{box-sizing:border-box}html,body{margin:0;background:#f7f8fb;color:#1f2329;color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}body{padding:34px 16px 94px}.title{font-size:27px;font-weight:800;padding:2px 3px 4px}.sub{font-size:12px;color:#858c98;padding:0 3px 19px}.section{font-size:11px;font-weight:800;color:#989faa;padding:5px 6px 8px}.card{background:#fff;border-radius:15px;overflow:hidden;margin:0 4px 14px;box-shadow:0 5px 18px rgba(30,45,70,.035)}.row{min-height:62px;padding:10px 15px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #edf0f4;text-decoration:none;color:#20242b}.row:last-child{border-bottom:0}.txt{min-width:0;padding-right:14px}.name{font-size:14px;font-weight:700}.desc{font-size:11px;color:#8a919d;margin-top:4px;line-height:1.4}.switch{width:44px;height:25px;border-radius:13px;background:#d9dee6;padding:3px;flex:none;transition:.18s}.switch:after{content:'';display:block;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.18);transition:.18s}.switch.on{background:#0367fd}.switch.on:after{transform:translateX(19px)}.arrow{font-size:20px;color:#a2a9b3}.version{text-align:center;color:#a0a6b0;font-size:10.5px;padding:8px}</style></head><body>" +
+                "<style>*{box-sizing:border-box}html,body{margin:0;background:#f7f8fb;color:#1f2329;color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}body{padding:54px 16px 94px}.title{font-size:27px;font-weight:800;padding:2px 3px 4px}.sub{font-size:12px;color:#858c98;padding:0 3px 21px}.section{font-size:11px;font-weight:800;color:#989faa;padding:5px 6px 8px}.card{background:#fff;border-radius:15px;overflow:hidden;margin:0 4px 14px;box-shadow:0 5px 18px rgba(30,45,70,.035)}.row{min-height:62px;padding:10px 15px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #edf0f4;text-decoration:none;color:#20242b}.row:last-child{border-bottom:0}.txt{min-width:0;padding-right:14px}.name{font-size:14px;font-weight:700}.desc{font-size:11px;color:#8a919d;margin-top:4px;line-height:1.4}.switch{width:44px;height:25px;border-radius:13px;background:#d9dee6;padding:3px;flex:none;transition:.18s}.switch:after{content:'';display:block;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.18);transition:.18s}.switch.on{background:#0367fd}.switch.on:after{transform:translateX(19px)}.arrow{font-size:20px;color:#a2a9b3}.version{text-align:center;color:#a0a6b0;font-size:10.5px;padding:8px}</style></head><body>" +
                 "<div class='title'>设置</div><div class='sub'>仅对 Android APP 生效 · 固定浅色模式</div>" +
                 "<div class='section'>内容显示</div><div class='card'>" +
                 settingsToggleRow("公告栏", "显示站点公告与往期公告入口", "show_announcement", announcement) +
@@ -296,7 +291,7 @@ public class MainActivity extends Activity {
                 "</div><div class='section'>页面</div><div class='card'>" +
                 "<a class='row' href='enapp://reload'><div class='txt'><div class='name'>重新加载首页</div><div class='desc'>仅在需要时手动刷新首页内容</div></div><div class='arrow'>›</div></a>" +
                 "<a class='row' href='enapp://clear-cache'><div class='txt'><div class='name'>清除页面缓存</div><div class='desc'>清理 WebView 缓存并重新载入首页</div></div><div class='arrow'>›</div></a>" +
-                "</div><div class='version'>en导航 Android · v1.5.0</div></body></html>";
+                "</div><div class='version'>en导航 Android · v1.6.0</div></body></html>";
     }
 
     private String settingsToggleRow(String title, String desc, String key, boolean enabled) {
@@ -317,7 +312,7 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        settings.setUserAgentString(settings.getUserAgentString() + " ENNavigationApp/1.5 Android LightOnly");
+        settings.setUserAgentString(settings.getUserAgentString() + " ENNavigationApp/1.6 Android LightOnly");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) settings.setForceDark(WebSettings.FORCE_DARK_OFF);
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -341,41 +336,23 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                if (!showingAbout && !showingSettings && isHomeUrl(url)) {
-                    view.animate().cancel();
-                    view.setAlpha(0f);
-                    view.setBackgroundColor(PAGE_BG);
-                }
-                injectEarlyLightTheme();
+                injectLightFallback();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-
-                if (url != null && url.startsWith(BOOTSTRAP_URL)) return;
-
                 if (!showingAbout && !showingSettings) {
                     updateNavForUrl(url);
-                    injectAppUi(url, () -> {
-                        if (isHomeUrl(url)) {
-                            WebBackForwardList list = webView.copyBackForwardList();
-                            homeHistoryIndex = list.getCurrentIndex();
-                            firstHomeReady = true;
-                            webView.animate().cancel();
-                            webView.animate().alpha(1f).setDuration(90).start();
-                            hideSplash();
-                        } else {
-                            webView.setAlpha(1f);
-                        }
-                        scheduleGlassRefresh();
-                    });
-                    webView.postDelayed(() -> injectAppUi(url, null), 240);
-                    webView.postDelayed(() -> injectAppUi(url, null), 800);
-                } else {
-                    webView.setAlpha(1f);
-                    scheduleGlassRefresh();
+                    injectAppUi(url);
+                    if (isHomeUrl(url)) {
+                        WebBackForwardList list = webView.copyBackForwardList();
+                        homeHistoryIndex = list.getCurrentIndex();
+                    }
+                    webView.postDelayed(() -> injectAppUi(url), 220);
+                    webView.postDelayed(() -> injectAppUi(url), 800);
                 }
+                scheduleGlassRefresh();
             }
 
             @Override
@@ -455,6 +432,37 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void installLightOnlyGuard() {
+        String script = "(function(){" +
+                "var keys={'theme':1,'en_theme':1,'en-theme':1};" +
+                "try{var gs=Storage.prototype.getItem,ss=Storage.prototype.setItem;Storage.prototype.getItem=function(k){if(keys[k])return 'light';return gs.call(this,k)};Storage.prototype.setItem=function(k,v){return ss.call(this,k,keys[k]?'light':v)};localStorage.setItem('theme','light');localStorage.setItem('en_theme','light');localStorage.setItem('en-theme','light');}catch(e){}" +
+                "try{var mm=window.matchMedia.bind(window);window.matchMedia=function(q){var s=String(q||'');if(/prefers-color-scheme\\s*:\\s*dark/i.test(s))return{matches:false,media:s,onchange:null,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},dispatchEvent:function(){return false}};if(/prefers-color-scheme\\s*:\\s*light/i.test(s))return{matches:true,media:s,onchange:null,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},dispatchEvent:function(){return false}};return mm(q)}}catch(e){}" +
+                "function force(){var d=document.documentElement;if(!d)return;if(d.classList.contains('dark'))d.classList.remove('dark');if(d.classList.contains('theme-dark'))d.classList.remove('theme-dark');if(d.classList.contains('night'))d.classList.remove('night');if(d.classList.contains('night-mode'))d.classList.remove('night-mode');if(!d.classList.contains('light'))d.classList.add('light');if(d.getAttribute('data-theme')!=='light')d.setAttribute('data-theme','light');d.style.colorScheme='light';}" +
+                "function strip(root){try{if(!root||!root.querySelectorAll)return;root.querySelectorAll('link[rel=stylesheet][href*=dark i],link[rel=stylesheet][href*=night i],script[src*=dark-mode i],script[src*=darkmode i],script[src*=night-mode i],script[src*=nightmode i],style[data-theme=dark],style[id*=dark i],style[class*=dark i]').forEach(function(n){n.remove()})}catch(e){}}" +
+                "force();strip(document);" +
+                "try{new MutationObserver(function(ms){force();for(var i=0;i<ms.length;i++){var a=ms[i].addedNodes||[];for(var j=0;j<a.length;j++){var n=a[j];if(!n||n.nodeType!==1)continue;var t=(n.tagName||'').toLowerCase(),src=((n.getAttribute&&n.getAttribute('src'))||'').toLowerCase(),href=((n.getAttribute&&n.getAttribute('href'))||'').toLowerCase(),mark=((n.id||'')+' '+(n.className||'')+' '+((n.getAttribute&&n.getAttribute('data-theme'))||'')).toLowerCase();if((t==='link'&&(href.indexOf('dark')>-1||href.indexOf('night')>-1))||(t==='script'&&(/dark[-_]?mode|night[-_]?mode/.test(src)))||(t==='style'&&(mark.indexOf('dark')>-1||mark.indexOf('night')>-1))){n.remove();continue}strip(n)}}}).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['class','data-theme']})}catch(e){}" +
+                "document.addEventListener('DOMContentLoaded',function(){force();strip(document);try{var s=document.createElement('style');s.id='en-app-light-only';s.textContent='html,body{background:#f7f8fb!important;color-scheme:light!important}.theme-switch,.theme-toggle,[data-theme-toggle],#themeSwitch,.appearance-switch{display:none!important}';document.head.insertBefore(s,document.head.firstChild)}catch(e){}},{once:true});" +
+                "})();";
+
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                WebViewCompat.addDocumentStartJavaScript(
+                        webView,
+                        script,
+                        Collections.singleton("https://enabcd.cn")
+                );
+            } catch (Throwable ignored) {
+                // Fallback runs in onPageStarted.
+            }
+        }
+    }
+
+    private void injectLightFallback() {
+        if (webView == null || showingAbout || showingSettings) return;
+        String js = "(function(){try{var d=document.documentElement;if(!d)return;d.classList.remove('dark','theme-dark','night','night-mode');d.classList.add('light');d.setAttribute('data-theme','light');d.style.colorScheme='light';try{localStorage.setItem('theme','light');localStorage.setItem('en_theme','light');localStorage.setItem('en-theme','light')}catch(e){}}catch(e){}})();";
+        webView.evaluateJavascript(js, null);
+    }
+
     private void installSwipeNavigation() {
         webView.setOnTouchListener((v, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
@@ -499,23 +507,6 @@ public class MainActivity extends Activity {
         if (lower.contains("hot.php")) return 1;
         if (lower.contains("privacy.php") || lower.contains("disclaimer.php") || lower.contains("contact.php")) return 3;
         return 0;
-    }
-
-    private void loadInitialHome() {
-        bootstrapInProgress = true;
-        showingAbout = false;
-        showingSettings = false;
-        webView.animate().cancel();
-        webView.setAlpha(0f);
-        webView.setBackgroundColor(PAGE_BG);
-        String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><style>html,body{margin:0;background:#f7f8fb!important;color-scheme:light}</style></head><body><script>try{localStorage.setItem('theme','light');localStorage.setItem('en_theme','light');localStorage.setItem('en-theme','light');document.documentElement.classList.remove('dark','theme-dark');document.documentElement.classList.add('light');document.documentElement.setAttribute('data-theme','light');}catch(e){}location.replace('" + HOME_URL + "?enapp=1');</script></body></html>";
-        webView.loadDataWithBaseURL(BOOTSTRAP_URL, html, "text/html", "UTF-8", null);
-    }
-
-    private void injectEarlyLightTheme() {
-        if (webView == null || showingAbout || showingSettings) return;
-        String js = "(function(){try{var d=document.documentElement;if(!d)return;d.classList.remove('dark','theme-dark');d.classList.add('light');d.setAttribute('data-theme','light');d.style.colorScheme='light';try{localStorage.setItem('theme','light');localStorage.setItem('en_theme','light');localStorage.setItem('en-theme','light');}catch(e){}var s=document.getElementById('en-app-early-light');if(!s&&document.head){s=document.createElement('style');s.id='en-app-early-light';s.textContent='html,body{background:#f7f8fb!important;color-scheme:light!important}.dark,.theme-dark{color-scheme:light!important}';document.head.insertBefore(s,document.head.firstChild);}}catch(e){}})();";
-        webView.evaluateJavascript(js, null);
     }
 
     private boolean handleUrl(Uri uri) {
@@ -568,25 +559,19 @@ public class MainActivity extends Activity {
         showingAbout = false;
         showingSettings = false;
         setActiveNav("home");
-        webView.animate().cancel();
-        webView.setAlpha(0f);
         webView.loadUrl(HOME_URL + "?enapp=1&_=" + System.currentTimeMillis());
     }
 
-    private void injectAppUi(String url, Runnable after) {
-        if (webView == null || showingAbout || showingSettings) {
-            if (after != null) after.run();
-            return;
-        }
+    private void injectAppUi(String url) {
+        if (webView == null || showingAbout || showingSettings) return;
         boolean showAnnouncement = prefs.getBoolean("show_announcement", true);
         boolean showRandom = prefs.getBoolean("show_random_video", true);
         boolean home = isHomeUrl(url);
-        int topSpace = home ? 0 : 20;
+        int topSpace = home ? 0 : 24;
 
         String js = "(function(){try{" +
-                "var d=document.documentElement,b=document.body;if(!d||!b)return false;" +
-                "d.classList.remove('dark','theme-dark','en-quicknav-off');d.classList.add('light','en-app-webview');d.setAttribute('data-theme','light');d.style.colorScheme='light';" +
-                "try{localStorage.setItem('theme','light');localStorage.setItem('en_theme','light');localStorage.setItem('en-theme','light');}catch(e){}" +
+                "var d=document.documentElement,b=document.body;if(!d||!b)return;" +
+                "d.classList.remove('dark','theme-dark','night','night-mode','en-quicknav-off');d.classList.add('light','en-app-webview');d.setAttribute('data-theme','light');d.style.colorScheme='light';" +
                 "d.classList.toggle('en-announcement-off'," + (!showAnnouncement) + ");d.classList.toggle('en-random-video-off'," + (!showRandom) + ");" +
                 "b.classList.toggle('en-app-home'," + home + ");b.classList.toggle('en-app-nonhome'," + (!home) + ");" +
                 "var s=document.getElementById('en-android-app-style');if(!s){s=document.createElement('style');s.id='en-android-app-style';document.head.insertBefore(s,document.head.firstChild);}s.textContent=`" +
@@ -602,11 +587,8 @@ public class MainActivity extends Activity {
                 "#en-app-search-logo{display:block!important;width:54px!important;height:54px!important;object-fit:contain!important;border-radius:14px!important;box-shadow:0 8px 22px rgba(31,45,70,.10)!important}" +
                 "@media(max-width:760px){body{padding-left:0!important;padding-right:0!important}}`;" +
                 (home ? "var input=document.querySelector('input[type=search],#searchInput,.search-input,input[name=q],input[name=keyword],input[placeholder*=搜索]');if(input){var anchor=input.closest('.search-card,.search-panel,.search-container,.search-wrap,.search-box')||input.closest('form')||input.parentElement;if(anchor&&anchor.parentNode&&!document.getElementById('en-app-search-logo-wrap')){var lw=document.createElement('div');lw.id='en-app-search-logo-wrap';var li=document.createElement('img');li.id='en-app-search-logo';li.src='https://enabcd.cn/favicon.ico';li.alt='en导航';lw.appendChild(li);anchor.parentNode.insertBefore(lw,anchor);}}" : "") +
-                "return true;}catch(e){return false;}})();";
-        webView.evaluateJavascript(js, value -> {
-            bootstrapInProgress = false;
-            if (after != null) after.run();
-        });
+                "}catch(e){}})();";
+        webView.evaluateJavascript(js, null);
     }
 
     private boolean isHomeUrl(String url) {
@@ -631,42 +613,6 @@ public class MainActivity extends Activity {
         else if (lower.contains("magic.php")) setActiveNav("magic");
         else if (lower.contains("privacy.php") || lower.contains("disclaimer.php") || lower.contains("contact.php")) setActiveNav("about");
         else setActiveNav("home");
-    }
-
-    private void showSplash() {
-        splashOverlay = new FrameLayout(this);
-        splashOverlay.setBackgroundColor(Color.WHITE);
-
-        LinearLayout center = new LinearLayout(this);
-        center.setOrientation(LinearLayout.VERTICAL);
-        center.setGravity(Gravity.CENTER);
-
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.app_icon);
-        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(86), dp(86));
-        center.addView(icon, iconLp);
-
-        TextView title = new TextView(this);
-        title.setText("en导航");
-        title.setTextColor(TEXT);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
-        titleLp.topMargin = dp(10);
-        center.addView(title, titleLp);
-
-        FrameLayout.LayoutParams centerLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        splashOverlay.addView(center, centerLp);
-        root.addView(splashOverlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
-    private void hideSplash() {
-        if (splashOverlay == null) return;
-        FrameLayout splash = splashOverlay;
-        splashOverlay = null;
-        splash.animate().alpha(0f).setDuration(180).withEndAction(() -> root.removeView(splash)).start();
     }
 
     private void scheduleGlassRefresh() {
@@ -748,8 +694,6 @@ public class MainActivity extends Activity {
     private void showOfflinePage() {
         showingAbout = false;
         showingSettings = false;
-        webView.setAlpha(1f);
-        hideSplash();
         String html = "<!doctype html><html><meta name='viewport' content='width=device-width,initial-scale=1'><body style='margin:0;background:#f7f8fb;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;color:#202124'><div style='text-align:center;padding:32px'><img src='https://enabcd.cn/favicon.ico' style='width:64px;height:64px;border-radius:16px'><h2 style='margin-bottom:8px'>网络连接失败</h2><p style='color:#777;font-size:13px'>请检查网络后重新加载</p><button onclick=\"location.href='" + HOME_URL + "'\" style='border:0;border-radius:12px;background:#0367fd;color:#fff;padding:12px 24px;font-size:14px;font-weight:700'>重新加载</button></div></body></html>";
         webView.loadDataWithBaseURL(HOME_URL, html, "text/html", "UTF-8", null);
     }
